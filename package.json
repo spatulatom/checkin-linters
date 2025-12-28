@@ -1,0 +1,35 @@
+{
+  "name": "checkin-linters",
+  "version": "0.1.0",
+  "private": true,
+  "browserslist": [
+    "Chrome >= 60",
+    "Firefox >= 55",
+    "Safari >= 11",
+    "Edge >= 79"
+  ],
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "next": "16.1.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.1",
+    "eslint-plugin-compat": "^6.0.2",
+    "stylelint": "^16.26.1",
+    "stylelint-no-unsupported-browser-features": "^8.0.5",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
