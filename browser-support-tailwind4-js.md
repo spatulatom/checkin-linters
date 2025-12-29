@@ -4,93 +4,163 @@
 
 ---
 
-## Table of Contents
+## The Framework: Three Categories of Tools
 
-1. [Key Misconceptions to Avoid](#1-key-misconceptions-to-avoid)
-2. [The Mental Model: Syntax vs APIs vs CSS Features](#2-the-mental-model-syntax-vs-apis-vs-css-features)
-   - [JavaScript: Syntax vs APIs](#javascript-has-two-concerns)
-   - [CSS: Just Features](#css-is-simpler)
-3. [Who Uses What: Tool Data Sources](#3-who-uses-what-tool-data-sources)
-4. [Default Browser Targets](#4-default-browser-targets)
-   - [CSS: Tailwind v4 (Hardcoded)](#tailwind-v4-css-hardcoded)
-   - [JavaScript: Vite/esbuild](#viteesbuild-javascript)
-5. [Quick Audit Tools (One-Time Checks)](#5-quick-audit-tools-one-time-checks)
-   - [JavaScript Syntax: es-check](#javascript-syntax-es-check)
-   - [CSS Features: doiuse](#css-features-doiuse)
-6. [Setting Up Ongoing Compatibility Checking](#6-setting-up-ongoing-compatibility-checking)
-   - [JavaScript: ESLint + compat plugin](#javascript-api-checking-eslint)
-   - [CSS: Stylelint](#css-feature-checking-stylelint)
-7. [Configuring Browser Targets](#7-configuring-browser-targets)
-8. [Limitations to Be Aware Of](#8-limitations-to-be-aware-of)
-9. [Quick Reference](#9-quick-reference)
+Every web project has tools that fall into three categories. Understanding which role each tool plays clarifies the entire browser compatibility picture:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  1. ECOSYSTEM (Build & Run)                                         │
+│     "What produces my output?"                                      │
+│     → Vite/esbuild, Next.js/SWC, Tailwind, TypeScript              │
+├─────────────────────────────────────────────────────────────────────┤
+│  2. LINTING (Code Quality)                                          │
+│     "What checks code quality?"                                     │
+│     → ESLint core, Prettier, TypeScript type-checking              │
+├─────────────────────────────────────────────────────────────────────┤
+│  3. CHECKING (Browser Compatibility)                                │
+│     "What verifies browser support?"                                │
+│     ├── 3a: Config Investigation (indirect)                        │
+│     │       "What are tools configured to target?"                  │
+│     │       → browserslist, vite.config.js, package.json           │
+│     └── 3b: Output Measurement (direct)                             │
+│             "What does the output actually require?"                │
+│             → es-check, doiuse, eslint-plugin-compat               │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Why this matters:** Most confusion comes from conflating these categories. ESLint core (category 2) doesn't check browser support. `npx browserslist` (category 3a) doesn't tell you what your build actually outputs.
+
+> **Note:** This model describes _roles_, not rigid categories. Tools can wear multiple hats — ESLint with `eslint-plugin-compat` spans categories 2 and 3b.
 
 ---
 
-## 1. Key Misconceptions to Avoid
+## Table of Contents
 
-### ❌ `npx browserslist` shows your actual browser support
+1. [Ecosystem: Build Tools](#1-ecosystem-build-tools)
+2. [Linting: Code Quality Tools](#2-linting-code-quality-tools)
+3. [Checking: Browser Compatibility](#3-checking-browser-compatibility)
+   - [3a: Config Investigation (Indirect)](#3a-config-investigation-indirect)
+   - [3b: Output Measurement (Direct)](#3b-output-measurement-direct)
+4. [Key Concepts: Syntax vs APIs vs CSS Features](#4-key-concepts-syntax-vs-apis-vs-css-features)
+5. [Common Misconceptions](#5-common-misconceptions)
+6. [Limitations to Be Aware Of](#6-limitations-to-be-aware-of)
+7. [Quick Reference](#7-quick-reference)
 
-**Reality:** It only shows:
+---
+
+## 1. Ecosystem: Build Tools
+
+> **Question answered:** "What produces my output?"
+
+These tools transform and bundle your code. They determine the **actual syntax level** of your output.
+
+### JavaScript Build Tools
+
+| Tool             | Role                  | Browser Target Config                   |
+| ---------------- | --------------------- | --------------------------------------- |
+| **Vite/esbuild** | Bundler + transpiler  | `build.target` in vite.config.js        |
+| **Next.js/SWC**  | Bundler + transpiler  | `browserslist` in package.json          |
+| **TypeScript**   | Type-checker (noEmit) | N/A (doesn't transform in Vite/Next.js) |
+
+**Key insight:** In modern setups, TypeScript with `noEmit: true` only type-checks. The bundler handles all syntax transformation.
+
+### CSS Build Tools
+
+| Tool              | Role            | Browser Target                                      |
+| ----------------- | --------------- | --------------------------------------------------- |
+| **Tailwind v4**   | Utility CSS     | Hardcoded (Safari 16.4+, Chrome 111+, Firefox 128+) |
+| **Lightning CSS** | CSS transformer | Hardcoded by Tailwind                               |
+| **Autoprefixer**  | Vendor prefixes | Uses browserslist                                   |
+
+**⚠️ Tailwind v4 ignores browserslist entirely.** Its browser targets are hardcoded and not configurable.
+
+### Default Browser Targets
+
+#### Tailwind v4 CSS (Hardcoded)
+
+| Browser    | Minimum Version |
+| ---------- | --------------- |
+| Safari/iOS | 16.4+           |
+| Chrome     | 111+            |
+| Firefox    | 128+            |
+
+#### Vite/esbuild JavaScript
+
+Default target: **ES2020** (or `baseline-widely-available` in Vite 6+)
+
+| ES Target | Safari | Chrome | Firefox |
+| --------- | ------ | ------ | ------- |
+| `es2020`  | 14+    | 80+    | 72+     |
+| `es2018`  | 12+    | 71+    | 78+     |
+| `es2015`  | 10+    | 51+    | 54+     |
+
+### Configuring Build Output
+
+```javascript
+// vite.config.js
+export default defineConfig({
+  build: {
+    // Option 1: ES version
+    target: 'es2018',
+
+    // Option 2: Specific browsers
+    target: ['safari12', 'chrome80', 'firefox72'],
+
+    // Option 3: Latest (minimal transpilation)
+    target: 'esnext',
+  },
+});
+```
+
+---
+
+## 2. Linting: Code Quality Tools
+
+> **Question answered:** "What checks code quality?"
+
+These tools analyze your code for errors, style issues, and best practices. **They don't check browser compatibility by default.**
+
+| Tool            | What It Checks                               |
+| --------------- | -------------------------------------------- |
+| **ESLint core** | Unused variables, syntax errors, code style  |
+| **Prettier**    | Formatting (indentation, quotes, semicolons) |
+| **TypeScript**  | Type errors, type safety                     |
+
+**Critical distinction:** ESLint core does NOT check browser compatibility. That requires adding `eslint-plugin-compat` (which moves ESLint into category 3b).
+
+---
+
+## 3. Checking: Browser Compatibility
+
+> **Question answered:** "What verifies browser support?"
+
+This splits into two approaches:
+
+### 3a: Config Investigation (Indirect)
+
+> **Question answered:** "What are my tools _configured_ to target?"
+
+This is **indirect** — you're reading config files and querying what tools _claim_ to target, not measuring actual output.
+
+#### The Browserslist Query
+
+```powershell
+npx browserslist
+```
+
+**What it tells you:**
 
 - That browserslist is installed
 - Your configured query (or defaults)
-- A list that **most tools ignore**
+- A list of browser versions matching that query
 
-Tailwind v4, Vite, and esbuild all **ignore browserslist**. Only ESLint, Stylelint, and Next.js SWC use it.
+**What it DOESN'T tell you:**
 
-### ❌ ESLint checks browser compatibility by default
+- What your build actually outputs
+- Which tools actually use this list
 
-**Reality:** ESLint core only checks code quality (unused variables, syntax errors, style issues). Browser API checking requires **eslint-plugin-compat** — it's not built-in.
-
-### ❌ `ecmaVersion` in ESLint config controls browser support
-
-**Reality:** `ecmaVersion: 2022` only tells ESLint's parser what syntax to understand. It has **zero effect** on browser compatibility checking.
-
-```javascript
-languageOptions: {
-  ecmaVersion: 2022,  // Parser setting, NOT browser targeting
-}
-```
-
-### ❌ TypeScript compiles your code for older browsers
-
-**Reality:** In Vite projects with `noEmit: true`, TypeScript only type-checks. The bundler (esbuild) handles all syntax transformation.
-
-### ❌ Linters show which browsers your code supports
-
-**Reality:** ESLint and Stylelint are **problem reporters**, not compatibility reporters. They only warn when something is **wrong** — no output means no problems found.
-
----
-
-## 2. The Mental Model: Syntax vs APIs vs CSS Features
-
-### JavaScript Has Two Concerns
-
-| Concern    | What It Is                                          | Who Handles It                   | Your Responsibility               |
-| ---------- | --------------------------------------------------- | -------------------------------- | --------------------------------- |
-| **Syntax** | Grammar: `?.`, `??`, `=>`, `class`                  | Bundler transforms automatically | None (trust your build target)    |
-| **APIs**   | Vocabulary: `fetch()`, `structuredClone()`, `.at()` | Nobody — runs as-is              | Check with ESLint + compat plugin |
-
-**The Translation Analogy:**
-
-- **Syntax** = Grammar rules ("I will" → "Je vais") — translator handles
-- **APIs** = Vocabulary ("defenestration") — word must exist in target language
-
-### CSS Is Simpler
-
-CSS has no syntax/API split. Everything is a **feature**:
-
-- `display: flex` — feature
-- `oklch()` — feature
-- `@layer` — feature
-
-Features either work, get ignored, or partially work. No crashes.
-
----
-
-## 3. Who Uses What: Tool Data Sources
-
-### The Browserslist Misconception
+#### Who Uses Browserslist?
 
 ```
 ┌─────────────────────────────────────┐
@@ -104,9 +174,20 @@ Features either work, get ignored, or partially work. No crashes.
  - eslint-plugin-compat   - Vite/esbuild
  - Stylelint plugin       - Tailwind v4
  - Next.js SWC            - Lightning CSS
+ - Autoprefixer
 ```
 
-### Data Sources for Compatibility Checking
+#### Config Locations by Tool
+
+| Tool                       | Config Location                         | Configurable? |
+| -------------------------- | --------------------------------------- | ------------- |
+| **Vite JS output**         | `build.target` in vite.config.js        | ✅ Yes        |
+| **Next.js JS output**      | `browserslist` in package.json          | ✅ Yes        |
+| **ESLint API checking**    | `settings.browsers` in eslint.config.js | ✅ Yes        |
+| **Stylelint CSS checking** | `browsers` in .stylelintrc.json         | ✅ Yes        |
+| **Tailwind v4 CSS output** | Hardcoded                               | ❌ No         |
+
+#### Data Sources for Checking Tools
 
 | Tool                     | Browser List From                       | Compatibility Data From |
 | ------------------------ | --------------------------------------- | ----------------------- |
@@ -119,35 +200,17 @@ Features either work, get ignored, or partially work. No crashes.
 
 ---
 
-## 4. Default Browser Targets
+### 3b: Output Measurement (Direct)
 
-### Tailwind v4 CSS (Hardcoded)
+> **Question answered:** "What does my build output _actually_ require?"
 
-| Browser    | Minimum Version |
-| ---------- | --------------- |
-| Safari/iOS | 16.4+           |
-| Chrome     | 111+            |
-| Firefox    | 128+            |
+This is **direct** — you're measuring the actual built files. This is the **source of truth**.
 
-**⚠️ Not configurable.** Tailwind v4 ignores browserslist entirely.
+#### Quick Audit Tools (One-Time Checks)
 
-### Vite/esbuild JavaScript
+Perfect for **discovery and auditing** — no configuration required, immediate answers.
 
-Default target: **ES2020** (or `baseline-widely-available` in Vite 6+)
-
-| ES Target | Safari | Chrome | Firefox |
-| --------- | ------ | ------ | ------- |
-| `es2020`  | 14+    | 80+    | 72+     |
-| `es2018`  | 12+    | 71+    | 78+     |
-| `es2015`  | 10+    | 51+    | 54+     |
-
----
-
-## 5. Quick Audit Tools (One-Time Checks)
-
-These tools are perfect for **discovery and auditing** — quickly checking what ES level or CSS features your build actually outputs. They require no configuration and give immediate answers.
-
-### JavaScript Syntax: es-check
+##### JavaScript Syntax: es-check
 
 **Purpose:** Verify what ECMAScript version your built JavaScript actually requires.
 
@@ -157,7 +220,7 @@ These tools are perfect for **discovery and auditing** — quickly checking what
 npm install -D es-check
 ```
 
-**Usage — test against different ES versions:**
+**Usage:**
 
 ```powershell
 # Check if build output is ES2017 compatible
@@ -193,17 +256,9 @@ error: SyntaxError: Unexpected character '#' (1:2306)
 info: ✓ ES-Check passed! All files are ES2022 compatible.
 ```
 
-**When to use:**
-
-- Auditing a new project to understand its output level
-- Verifying your bundler config is working as expected
-- Checking third-party builds
-
 **⚠️ Limitation:** Only checks **syntax**, not **runtime APIs**. Code could parse as ES2017 but still use `fetch()` or `IntersectionObserver`.
 
----
-
-### CSS Features: doiuse
+##### CSS Features: doiuse
 
 **Purpose:** Scan CSS files and report which features are unsupported in specified browsers.
 
@@ -234,31 +289,15 @@ style.css:1:1: CSS Grid Layout not supported by: Opera Mini (all)
 style.css:1:500: backdrop-filter not supported by: Opera Mini, Firefox (< 103)
 ```
 
-**Data source:** Uses caniuse-lite (same as Stylelint plugin).
-
-**When to use:**
-
-- Quick one-time audit of CSS compatibility
-- Checking built CSS (includes all Tailwind utilities)
-- Understanding what browsers your CSS actually supports
+**Data source:** Uses caniuse-lite.
 
 ---
 
-### Comparison: Audit Tools vs. Ongoing Checking
+#### Ongoing Checking Tools (Integrated into Workflow)
 
-| Aspect             | Audit Tools (es-check, doiuse) | Linter Plugins (ESLint, Stylelint)     |
-| ------------------ | ------------------------------ | -------------------------------------- |
-| Setup              | Zero config                    | Requires config files                  |
-| Purpose            | Discovery / one-time check     | Ongoing enforcement                    |
-| CI Integration     | Possible but basic             | Designed for CI                        |
-| Editor Integration | ❌ None                        | ✅ Real-time warnings                  |
-| Best for           | "What does my build output?"   | "Warn me when I use incompatible code" |
+For **continuous enforcement** — integrated into your editor and CI pipeline.
 
----
-
-## 6. Setting Up Ongoing Compatibility Checking
-
-### JavaScript API Checking (ESLint)
+##### JavaScript API Checking: ESLint + compat plugin
 
 **Required packages:**
 
@@ -267,7 +306,7 @@ eslint
 @eslint/js
 typescript-eslint
 eslint-plugin-compat
-browserslist (used as a library by compat plugin)
+browserslist
 ```
 
 **Config structure:**
@@ -301,7 +340,7 @@ export default [
 npx eslint src/*.ts
 ```
 
-### CSS Feature Checking (Stylelint)
+##### CSS Feature Checking: Stylelint
 
 **Required packages:**
 
@@ -341,48 +380,75 @@ npx stylelint "dist/assets/*.css"
 
 ---
 
-## 7. Configuring Browser Targets
+#### Audit vs. Ongoing: When to Use Each
 
-### What You CAN Configure
-
-| Tool                       | Configurable? | Where                                   |
-| -------------------------- | ------------- | --------------------------------------- |
-| **Vite JS output**         | ✅ Yes        | `build.target` in vite.config.js        |
-| **ESLint API checking**    | ✅ Yes        | `settings.browsers` in eslint.config.js |
-| **Stylelint CSS checking** | ✅ Yes        | `browsers` in .stylelintrc.json         |
-| **Tailwind v4 CSS output** | ❌ No         | Hardcoded (Safari 16.4+, Chrome 111+)   |
-
-### Vite Build Target Options
-
-```javascript
-// vite.config.js
-export default defineConfig({
-  build: {
-    // Option 1: ES version
-    target: 'es2018',
-
-    // Option 2: Specific browsers
-    target: ['safari12', 'chrome80', 'firefox72'],
-
-    // Option 3: Latest (minimal transpilation)
-    target: 'esnext',
-  },
-});
-```
-
-### Aligning Your Targets
-
-For consistency, align your checking tools with your build output:
-
-| Config Location                          | Purpose          | Example            |
-| ---------------------------------------- | ---------------- | ------------------ |
-| `vite.config.js` → `build.target`        | Actual JS output | `"es2018"`         |
-| `eslint.config.js` → `settings.browsers` | API checking     | `["safari >= 12"]` |
-| `.stylelintrc.json` → `browsers`         | CSS checking     | `["safari >= 12"]` |
+| Aspect             | Audit Tools (es-check, doiuse) | Linter Plugins (ESLint, Stylelint)     |
+| ------------------ | ------------------------------ | -------------------------------------- |
+| Setup              | Zero config                    | Requires config files                  |
+| Purpose            | Discovery / one-time check     | Ongoing enforcement                    |
+| CI Integration     | Possible but basic             | Designed for CI                        |
+| Editor Integration | ❌ None                        | ✅ Real-time warnings                  |
+| Best for           | "What does my build output?"   | "Warn me when I use incompatible code" |
 
 ---
 
-## 8. Limitations to Be Aware Of
+## 4. Key Concepts: Syntax vs APIs vs CSS Features
+
+### JavaScript Has Two Concerns
+
+| Concern    | What It Is                                          | Who Handles It                   | Your Responsibility               |
+| ---------- | --------------------------------------------------- | -------------------------------- | --------------------------------- |
+| **Syntax** | Grammar: `?.`, `??`, `=>`, `class`                  | Bundler transforms automatically | None (trust your build target)    |
+| **APIs**   | Vocabulary: `fetch()`, `structuredClone()`, `.at()` | Nobody — runs as-is              | Check with ESLint + compat plugin |
+
+**The Translation Analogy:**
+
+- **Syntax** = Grammar rules ("I will" → "Je vais") — translator handles
+- **APIs** = Vocabulary ("defenestration") — word must exist in target language
+
+### CSS Is Simpler
+
+CSS has no syntax/API split. Everything is a **feature**:
+
+- `display: flex` — feature
+- `oklch()` — feature
+- `@layer` — feature
+
+Features either work, get ignored, or partially work. No crashes.
+
+---
+
+## 5. Common Misconceptions
+
+### ❌ `npx browserslist` shows your actual browser support
+
+**Reality:** It only shows your configured query. Most build tools (Vite, Tailwind v4) **ignore browserslist**.
+
+### ❌ ESLint checks browser compatibility by default
+
+**Reality:** ESLint core only checks code quality. Browser API checking requires **eslint-plugin-compat**.
+
+### ❌ `ecmaVersion` in ESLint config controls browser support
+
+**Reality:** `ecmaVersion: 2022` only tells ESLint's parser what syntax to understand. It has **zero effect** on browser compatibility checking.
+
+```javascript
+languageOptions: {
+  ecmaVersion: 2022,  // Parser setting, NOT browser targeting
+}
+```
+
+### ❌ TypeScript compiles your code for older browsers
+
+**Reality:** In Vite/Next.js projects with `noEmit: true`, TypeScript only type-checks. The bundler handles all syntax transformation.
+
+### ❌ Linters show which browsers your code supports
+
+**Reality:** ESLint and Stylelint are **problem reporters**, not compatibility reporters. They only warn when something is **wrong** — no output means no problems found.
+
+---
+
+## 6. Limitations to Be Aware Of
 
 ### ESLint Can't Detect Fallbacks
 
@@ -416,30 +482,31 @@ You can check `dist/*.js` with ESLint, but:
 
 ---
 
-## 9. Quick Reference
+## 7. Quick Reference
 
 ### Commands
 
-| Check                | Command                                         | Tool Type |
-| -------------------- | ----------------------------------------------- | --------- |
-| JS syntax (built)    | `npx es-check es2022 "dist/*.js"`               | Audit     |
-| JS APIs (source)     | `npx eslint src/*.ts`                           | Ongoing   |
-| CSS features (built) | `npx doiuse --browsers "defaults" "dist/*.css"` | Audit     |
-| CSS features (built) | `npx stylelint "dist/assets/*.css"`             | Ongoing   |
-| Browserslist query   | `npx browserslist` (informational only)         | Info      |
+| Check                                  | Command                                         | Category     |
+| -------------------------------------- | ----------------------------------------------- | ------------ |
+| What browsers does browserslist query? | `npx browserslist`                              | 3a (Config)  |
+| JS syntax (built)                      | `npx es-check es2022 "dist/*.js"`               | 3b (Output)  |
+| JS APIs (source)                       | `npx eslint src/*.ts`                           | 3b (Ongoing) |
+| CSS features (built)                   | `npx doiuse --browsers "defaults" "dist/*.css"` | 3b (Output)  |
+| CSS features (built)                   | `npx stylelint "dist/assets/*.css"`             | 3b (Ongoing) |
 
 ### What Each Tool Does
 
-| Tool                 | Checks                      | Affects Build?             | Use Case |
-| -------------------- | --------------------------- | -------------------------- | -------- |
-| **es-check**         | JS syntax level             | ❌ No                      | Audit    |
-| **doiuse**           | CSS feature browser support | ❌ No                      | Audit    |
-| ESLint core          | Code quality, syntax errors | ❌ No                      | Ongoing  |
-| eslint-plugin-compat | JS API browser support      | ❌ No                      | Ongoing  |
-| Stylelint plugin     | CSS feature browser support | ❌ No                      | Ongoing  |
-| TypeScript           | Types (with `noEmit: true`) | ❌ No                      | Ongoing  |
-| Vite/esbuild         | —                           | ✅ Yes (transforms syntax) | Build    |
-| Tailwind v4          | —                           | ✅ Yes (outputs CSS)       | Build    |
+| Tool                 | Category      | Checks                      | Affects Build?             |
+| -------------------- | ------------- | --------------------------- | -------------------------- |
+| Vite/esbuild         | 1 (Ecosystem) | —                           | ✅ Yes (transforms syntax) |
+| Tailwind v4          | 1 (Ecosystem) | —                           | ✅ Yes (outputs CSS)       |
+| ESLint core          | 2 (Linting)   | Code quality, syntax errors | ❌ No                      |
+| TypeScript           | 2 (Linting)   | Types (with `noEmit: true`) | ❌ No                      |
+| browserslist         | 3a (Config)   | Shows configured query      | ❌ No                      |
+| **es-check**         | 3b (Output)   | JS syntax level             | ❌ No                      |
+| **doiuse**           | 3b (Output)   | CSS feature support         | ❌ No                      |
+| eslint-plugin-compat | 3b (Ongoing)  | JS API browser support      | ❌ No                      |
+| Stylelint plugin     | 3b (Ongoing)  | CSS feature browser support | ❌ No                      |
 
 ### Output Interpretation
 
