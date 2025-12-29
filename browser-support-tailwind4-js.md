@@ -46,6 +46,11 @@ Every web project has tools that fall into three categories. Understanding which
 5. [Common Misconceptions](#5-common-misconceptions)
 6. [Limitations to Be Aware Of](#6-limitations-to-be-aware-of)
 7. [Quick Reference](#7-quick-reference)
+8. [Appendix: Complete Config Files](#appendix-complete-config-files-copypaste-ready)
+   - [Quick Audit Commands (3b)](#quick-audit-commands-3b)
+   - [ESLint Config (Next.js)](#eslint-config-eslintconfigmjs)
+   - [Stylelint Config](#stylelint-config-stylelintrcjson)
+   - [Vite Project Variant](#vite-project-variant-eslintconfigmjs)
 
 ---
 
@@ -102,13 +107,13 @@ Default target: **ES2020** (or `baseline-widely-available` in Vite 6+)
 export default defineConfig({
   build: {
     // Option 1: ES version
-    target: 'es2018',
+    target: "es2018",
 
     // Option 2: Specific browsers
-    target: ['safari12', 'chrome80', 'firefox72'],
+    target: ["safari12", "chrome80", "firefox72"],
 
     // Option 3: Latest (minimal transpilation)
-    target: 'esnext',
+    target: "esnext",
   },
 });
 ```
@@ -206,11 +211,22 @@ npx browserslist
 
 This is **direct** — you're measuring the actual built files. This is the **source of truth**.
 
-#### Quick Audit Tools (One-Time Checks)
+#### Tool Capabilities Overview
 
-Perfect for **discovery and auditing** — no configuration required, immediate answers.
+| Tool                | Checks          | Source Code | Build Output | Editor Integration |
+| ------------------- | --------------- | ----------- | ------------ | ------------------ |
+| **es-check**        | JS syntax level | ❌          | ✅           | ❌                 |
+| **doiuse**          | CSS features    | ✅          | ✅           | ❌                 |
+| **ESLint + compat** | JS APIs         | ✅          | ✅           | ✅                 |
+| **Stylelint**       | CSS features    | ✅          | ✅           | ✅                 |
 
-##### JavaScript Syntax: es-check
+**Key insight:** ESLint and Stylelint can check **both** source code (for real-time feedback) **and** build output (for source-of-truth verification). This makes them the most versatile option.
+
+---
+
+#### JavaScript Checking
+
+##### Syntax Level: es-check
 
 **Purpose:** Verify what ECMAScript version your built JavaScript actually requires.
 
@@ -258,9 +274,13 @@ info: ✓ ES-Check passed! All files are ES2022 compatible.
 
 **⚠️ Limitation:** Only checks **syntax**, not **runtime APIs**. Code could parse as ES2017 but still use `fetch()` or `IntersectionObserver`.
 
-##### CSS Features: doiuse
+---
 
-**Purpose:** Scan CSS files and report which features are unsupported in specified browsers.
+#### CSS Checking
+
+##### Feature Scanning: doiuse
+
+**Purpose:** Scan CSS files and report which features are unsupported in specified browsers. Zero-config option for quick checks.
 
 **Install:**
 
@@ -291,56 +311,7 @@ style.css:1:500: backdrop-filter not supported by: Opera Mini, Firefox (< 103)
 
 **Data source:** Uses caniuse-lite.
 
----
-
-#### Ongoing Checking Tools (Integrated into Workflow)
-
-For **continuous enforcement** — integrated into your editor and CI pipeline.
-
-##### JavaScript API Checking: ESLint + compat plugin
-
-**Required packages:**
-
-```
-eslint
-@eslint/js
-typescript-eslint
-eslint-plugin-compat
-browserslist
-```
-
-**Config structure:**
-
-```javascript
-// eslint.config.js
-import compat from 'eslint-plugin-compat';
-
-export default [
-  {
-    plugins: { compat },
-    rules: {
-      'compat/compat': 'warn', // Required — not enabled by default
-    },
-    settings: {
-      browsers: ['safari >= 12', 'chrome >= 80', 'firefox >= 72'],
-    },
-  },
-];
-```
-
-**Key points:**
-
-- `settings.browsers` is ONLY for eslint-plugin-compat
-- Without the plugin, this setting does nothing
-- The plugin checks APIs against MDN browser-compat-data
-
-**Command:**
-
-```powershell
-npx eslint src/*.ts
-```
-
-##### CSS Feature Checking: Stylelint
+##### Feature Checking: Stylelint
 
 **Required packages:**
 
@@ -371,24 +342,102 @@ browserslist
 **Commands:**
 
 ```powershell
-# Check source CSS
+# Check source CSS (real-time feedback in editor)
 npx stylelint "src/**/*.css"
 
-# Check built CSS (recommended — includes all Tailwind utilities)
+# Check built CSS (source of truth — includes all Tailwind utilities)
 npx stylelint "dist/assets/*.css"
+
+# For Next.js projects
+npx stylelint ".next/static/css/*.css"
+```
+
+**Checking build output** gives you the source of truth while still using the same tooling and configuration.
+
+---
+
+#### ESLint + compat plugin (Full Setup)
+
+**Required packages:**
+
+```
+eslint
+@eslint/js
+typescript-eslint
+eslint-plugin-compat
+browserslist
+```
+
+**Config structure for checking both source AND build output:**
+
+```javascript
+// eslint.config.js
+import compat from "eslint-plugin-compat";
+import { globalIgnores } from "eslint/config";
+
+export default [
+  // Check source code (editor integration + CI)
+  {
+    plugins: { compat },
+    rules: {
+      "compat/compat": "warn",
+    },
+    settings: {
+      browsers: ["Chrome >= 60", "Firefox >= 55", "Safari >= 11", "Edge >= 79"],
+    },
+  },
+  // Check build output (source of truth)
+  {
+    files: [".next/static/chunks/**/*.js"], // or 'dist/assets/*.js' for Vite
+    plugins: { compat },
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+    },
+    rules: {
+      "compat/compat": "warn",
+    },
+    settings: {
+      browsers: ["Chrome >= 60", "Firefox >= 55", "Safari >= 11", "Edge >= 79"],
+    },
+  },
+  // Don't ignore build output you want to check
+  globalIgnores([
+    ".next/cache/**",
+    ".next/server/**",
+    // NOT ignoring .next/static/chunks/**
+  ]),
+];
+```
+
+**Key points:**
+
+- `settings.browsers` is ONLY for eslint-plugin-compat
+- Without the plugin, this setting does nothing
+- The plugin checks APIs against MDN browser-compat-data
+- **Same tool** can check source (for editor feedback) AND build output (for verification)
+
+**Commands:**
+
+```powershell
+# Check source code
+npx eslint src/*.ts
+
+# Check build output
+npx eslint ".next/static/chunks/*.js"
 ```
 
 ---
 
-#### Audit vs. Ongoing: When to Use Each
+#### Choosing Your Approach
 
-| Aspect             | Audit Tools (es-check, doiuse) | Linter Plugins (ESLint, Stylelint)     |
-| ------------------ | ------------------------------ | -------------------------------------- |
-| Setup              | Zero config                    | Requires config files                  |
-| Purpose            | Discovery / one-time check     | Ongoing enforcement                    |
-| CI Integration     | Possible but basic             | Designed for CI                        |
-| Editor Integration | ❌ None                        | ✅ Real-time warnings                  |
-| Best for           | "What does my build output?"   | "Warn me when I use incompatible code" |
+| Need                                  | Recommended Approach                          |
+| ------------------------------------- | --------------------------------------------- |
+| Quick one-time syntax check           | `es-check`                                    |
+| Quick one-time CSS check              | `doiuse`                                      |
+| Ongoing enforcement + editor feedback | ESLint/Stylelint on source                    |
+| Source of truth verification          | ESLint/Stylelint on build output              |
+| **Best of both worlds**               | ESLint/Stylelint on **both** source AND build |
 
 ---
 
@@ -474,11 +523,13 @@ eslint-plugin-compat uses MDN browser-compat-data, which may lag behind caniuse 
 
 ### Checking Built Files Has Caveats
 
-You can check `dist/*.js` with ESLint, but:
+You can (and should) check build output with ESLint/Stylelint, but be aware:
 
-1. Minified code triggers false positives (disable code quality rules)
-2. APIs are identical to source (bundler doesn't add/remove APIs)
-3. Syntax is guaranteed by your build target (no need to check)
+1. **Disable code quality rules for build output** — minified code triggers false positives. Only enable `compat/compat` for built files.
+2. **APIs are identical to source** — bundler doesn't add/remove APIs, but checking build output confirms nothing was unexpectedly introduced by dependencies.
+3. **Syntax is guaranteed by your build target** — use `es-check` only if you don't trust your build config.
+
+**Recommended setup:** Check source for real-time feedback, check build output in CI for verification.
 
 ---
 
@@ -486,27 +537,29 @@ You can check `dist/*.js` with ESLint, but:
 
 ### Commands
 
-| Check                                  | Command                                         | Category     |
+| Check                                  | Command                                         | Target       |
 | -------------------------------------- | ----------------------------------------------- | ------------ |
-| What browsers does browserslist query? | `npx browserslist`                              | 3a (Config)  |
-| JS syntax (built)                      | `npx es-check es2022 "dist/*.js"`               | 3b (Output)  |
-| JS APIs (source)                       | `npx eslint src/*.ts`                           | 3b (Ongoing) |
-| CSS features (built)                   | `npx doiuse --browsers "defaults" "dist/*.css"` | 3b (Output)  |
-| CSS features (built)                   | `npx stylelint "dist/assets/*.css"`             | 3b (Ongoing) |
+| What browsers does browserslist query? | `npx browserslist`                              | Config       |
+| JS syntax (built)                      | `npx es-check es2022 "dist/*.js"`               | Build output |
+| JS APIs (source)                       | `npx eslint src/*.ts`                           | Source       |
+| JS APIs (built)                        | `npx eslint ".next/static/chunks/*.js"`         | Build output |
+| CSS features (quick check)             | `npx doiuse --browsers "defaults" "dist/*.css"` | Build output |
+| CSS features (source)                  | `npx stylelint "src/**/*.css"`                  | Source       |
+| CSS features (built)                   | `npx stylelint "dist/assets/*.css"`             | Build output |
 
 ### What Each Tool Does
 
-| Tool                 | Category      | Checks                      | Affects Build?             |
-| -------------------- | ------------- | --------------------------- | -------------------------- |
-| Vite/esbuild         | 1 (Ecosystem) | —                           | ✅ Yes (transforms syntax) |
-| Tailwind v4          | 1 (Ecosystem) | —                           | ✅ Yes (outputs CSS)       |
-| ESLint core          | 2 (Linting)   | Code quality, syntax errors | ❌ No                      |
-| TypeScript           | 2 (Linting)   | Types (with `noEmit: true`) | ❌ No                      |
-| browserslist         | 3a (Config)   | Shows configured query      | ❌ No                      |
-| **es-check**         | 3b (Output)   | JS syntax level             | ❌ No                      |
-| **doiuse**           | 3b (Output)   | CSS feature support         | ❌ No                      |
-| eslint-plugin-compat | 3b (Ongoing)  | JS API browser support      | ❌ No                      |
-| Stylelint plugin     | 3b (Ongoing)  | CSS feature browser support | ❌ No                      |
+| Tool                 | Category      | Checks                      | Source | Build | Editor |
+| -------------------- | ------------- | --------------------------- | ------ | ----- | ------ |
+| Vite/esbuild         | 1 (Ecosystem) | —                           | —      | —     | —      |
+| Tailwind v4          | 1 (Ecosystem) | —                           | —      | —     | —      |
+| ESLint core          | 2 (Linting)   | Code quality, syntax errors | ✅     | ✅    | ✅     |
+| TypeScript           | 2 (Linting)   | Types (with `noEmit: true`) | ✅     | ❌    | ✅     |
+| browserslist         | 3a (Config)   | Shows configured query      | —      | —     | —      |
+| **es-check**         | 3b (Output)   | JS syntax level             | ❌     | ✅    | ❌     |
+| **doiuse**           | 3b (Output)   | CSS feature support         | ✅     | ✅    | ❌     |
+| eslint-plugin-compat | 3b (Output)   | JS API browser support      | ✅     | ✅    | ✅     |
+| Stylelint plugin     | 3b (Output)   | CSS feature browser support | ✅     | ✅    | ✅     |
 
 ### Output Interpretation
 
@@ -537,3 +590,211 @@ Next.js 16+ uses **SWC** instead of esbuild and **respects browserslist** for JS
 | CSS engine       | Lightning CSS                    | Lightning CSS (same)           |
 
 CSS behavior is identical — Tailwind v4's hardcoded targets apply regardless of framework.
+
+---
+
+## Appendix: Complete Config Files (Copy/Paste Ready)
+
+These configs check browser compatibility for **both source code and build output**. Adjust the `browsers` array to match your project's requirements.
+
+### Quick Audit Commands (3b)
+
+**Build your project first**, then run these commands to check browser compatibility of the output.
+
+#### Next.js Project
+
+```powershell
+# Check built JavaScript (APIs)
+npx eslint ".next/static/chunks/**/*.js"
+
+# Check built CSS (features)
+npx stylelint ".next/static/css/**/*.css"
+
+# Both in one line
+npx eslint ".next/static/chunks/**/*.js"; npx stylelint ".next/static/css/**/*.css"
+```
+
+#### Vite Project
+
+```powershell
+# Check built JavaScript (APIs)
+npx eslint "dist/assets/**/*.js"
+
+# Check built CSS (features)
+npx stylelint "dist/assets/**/*.css"
+
+# Both in one line
+npx eslint "dist/assets/**/*.js"; npx stylelint "dist/assets/**/*.css"
+```
+
+#### Add to package.json (optional)
+
+```json
+{
+  "scripts": {
+    "check:compat": "eslint \".next/static/chunks/**/*.js\" && stylelint \".next/static/css/**/*.css\"",
+    "check:compat:js": "eslint \".next/static/chunks/**/*.js\"",
+    "check:compat:css": "stylelint \".next/static/css/**/*.css\""
+  }
+}
+```
+
+Then run: `npm run check:compat`
+
+---
+
+### ESLint Config (eslint.config.mjs)
+
+```javascript
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+import compat from "eslint-plugin-compat";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Browser compatibility checking (same targets as browserslist in package.json)
+  {
+    plugins: { compat },
+    rules: {
+      "compat/compat": "warn",
+    },
+    settings: {
+      browsers: ["Chrome >= 60", "Firefox >= 55", "Safari >= 11", "Edge >= 79"],
+    },
+  },
+  // Special config for checking built output (only compat rules, no code quality)
+  {
+    files: [".next/static/chunks/**/*.js"],
+    plugins: { compat },
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+    },
+    rules: {
+      "compat/compat": "warn",
+    },
+    settings: {
+      browsers: ["Chrome >= 60", "Firefox >= 55", "Safari >= 11", "Edge >= 79"],
+    },
+  },
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Ignore build output EXCEPT for the chunks we want to check
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    ".next/cache/**",
+    ".next/server/**",
+    ".next/types/**",
+  ]),
+]);
+
+export default eslintConfig;
+```
+
+**Required packages:**
+
+```bash
+npm install -D eslint eslint-plugin-compat eslint-config-next
+```
+
+**Usage:**
+
+```bash
+# Check source code
+npx eslint "app/**/*.{ts,tsx}"
+
+# Check build output
+npx eslint ".next/static/chunks/**/*.js"
+```
+
+---
+
+### Stylelint Config (.stylelintrc.json)
+
+```json
+{
+  "plugins": ["stylelint-no-unsupported-browser-features"],
+  "rules": {
+    "plugin/no-unsupported-browser-features": [
+      true,
+      {
+        "browsers": [
+          "Chrome >= 60",
+          "Firefox >= 55",
+          "Safari >= 11",
+          "Edge >= 79"
+        ],
+        "severity": "warning"
+      }
+    ]
+  }
+}
+```
+
+**Required packages:**
+
+```bash
+npm install -D stylelint stylelint-no-unsupported-browser-features
+```
+
+**Usage:**
+
+```bash
+# Check source CSS
+npx stylelint "app/**/*.css"
+
+# Check build output (includes all Tailwind utilities)
+npx stylelint ".next/static/css/**/*.css"
+```
+
+---
+
+### Vite Project Variant (eslint.config.mjs)
+
+For non-Next.js projects using Vite:
+
+```javascript
+import { defineConfig, globalIgnores } from "eslint/config";
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+import compat from "eslint-plugin-compat";
+
+const eslintConfig = defineConfig([
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  // Browser compatibility checking
+  {
+    plugins: { compat },
+    rules: {
+      "compat/compat": "warn",
+    },
+    settings: {
+      browsers: ["Chrome >= 60", "Firefox >= 55", "Safari >= 11", "Edge >= 79"],
+    },
+  },
+  // Check build output
+  {
+    files: ["dist/assets/**/*.js"],
+    plugins: { compat },
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+    },
+    rules: {
+      "compat/compat": "warn",
+    },
+    settings: {
+      browsers: ["Chrome >= 60", "Firefox >= 55", "Safari >= 11", "Edge >= 79"],
+    },
+  },
+  globalIgnores([
+    "dist/**",
+    "!dist/assets/**/*.js", // Don't ignore the JS we want to check
+  ]),
+]);
+
+export default eslintConfig;
+```
